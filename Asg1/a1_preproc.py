@@ -15,8 +15,8 @@ SPACE = " "
 NEWLINE_REGEX = r'\n'
 nlp = spacy.load('en', disable=['parser', 'ner'])
 
-# Characters taken from https://perishablepress.com/stop-using-unsafe-characters-in-urls/
-URL_REGEX = r'(http:\/\/|www\.)[$.+!*,;?:@=&\w\-\'\(\)\/]*'  
+# Characters taken from https://perishablepress.com/stop-using-unsafe-characters-in-urls/ excluding round brackets
+URL_REGEX = r'(https:\/\/|http:\/\/|www\.)[$.+!*,;%?:@=&\w\-\'\/]*'  
 abbrev = []
 stopwords = []
 
@@ -27,48 +27,53 @@ def detect_abbrev(pattern):
         return pattern.group(1) + SPACE + "." + SPACE
 
 def detect_stopwords(pattern):
-    if pattern.group(1).strip() in stopwords:
+    if pattern.group(1).strip().lower() in stopwords:
         return ""
     else:
         return pattern.group(0)
 
 def detect_eos(line, is_tokenized):
     if (is_tokenized):
-        line = re.sub(r"(\S+)/(\S+)", r"\1", line)
+        line = re.sub(r"(\S+)\/(\S+)", r"\1", line)
     
     # Newline after EOS punctuations
-    line = re.sub(r"(\w) (\.|!|\?|;|:|\") (\w)", r"\1 \2 \n \3", line)
+    line = re.sub(r"(\w) ([\.!\?;:\"]+) (\w)", r"\1 \2 \n\3", line)
 
     # Move EOS if punctuations followed by double quotations
-    line = re.sub(r" (\.|!|?) \" ", r" \1 \" \n ", line)
+    line = re.sub(r" (\.|!|\?) \" ", r" \1 \" \n", line)
 
     # Disqualify boundary with ? or ! if followed by a lowercase letter
-    line = re.sub(r"(?|!) \n ([a-z])", r"\1 \2", line)
+    line = re.sub(r"(\?|!|\.) \n([a-z])", r"\1 \2", line)
+
+    return line
  
-def tokenize(line):
+def tagger(line):
     if ('/' in line):
         print("Backslash detected in line =>", line)
 
-    tokenize_line = ""
-    doc = nlp(line)
+    tokenize_line = line.split(SPACE)
+    tagged_line = ""
+    doc = spacy.tokens.Doc(nlp.vocab, words=tokenize_line)
+    doc = nlp.tagger(doc)
     for token in doc:
-        tokenize_line = tokenize_line + token.text + "/" + token.tag_ + SPACE
-    return tokenize_line.strip()
+        tagged_line = tagged_line + token.text + "/" + token.tag_ + SPACE
+    return tagged_line
 
 def lemmatize(line, is_tokenized):
-    lemmatize_line = ""
-    
     if (is_tokenized):
-        line = re.sub(r"(\S+)/(\S+)", r"\1", line)
-    
-    doc = nlp(line)
+        line = re.sub(r"(\S+)\/(\S+)", r"\1", line)
+
+    tokenize_line = line.split(SPACE)
+    lemmatize_line = ""
+    doc = spacy.tokens.Doc(nlp.vocab, words=tokenize_line)
+    doc = nlp.tagger(doc)
     for token in doc:
         if (token.lemma_.startswith("-")):
             lemmatize_line = lemmatize_line + token.text + "/" + token.tag_ + SPACE
         else:
             lemmatize_line = lemmatize_line + token.lemma_ + "/" + token.tag_ + SPACE
 
-    return lemmatize_line.strip()
+    return lemmatize_line
 
 def preproc1(comment , steps=range(1,11)):
     ''' This function pre-processes a single comment
@@ -87,58 +92,77 @@ def preproc1(comment , steps=range(1,11)):
     if 1 in steps:
         modComm = re.sub(NEWLINE_REGEX, SPACE, modComm)
     if 2 in steps:
+        modComm = modComm.strip()
         modComm = html.unescape(modComm)
     if 3 in steps:
+        modComm = modComm.strip()
         modComm = re.sub(URL_REGEX, EMPTY_STRING, modComm)
     if 4 in steps:
+        modComm = modComm.strip()
         # Replace ." ?" !" as . " ? " ! "
         modComm = re.sub(r"(\w)(!|\.|\?)[\s]*(\")", r"\1 \2 \3", modComm)
         
+        # Replace ", as " ,
+        modComm = re.sub(r"\", ", "\" , ", modComm)
+
         # Tokenize grammatically incorrect multiple punctuations as a single token  (breaks grammatically incorrect <dogs'.>)
         modComm = re.sub(r"(([^\s\w]{2,})(\")|([^\s\w]{2,}))", r" \2\4 \3 ", modComm)
 
         # Tokenize other punctuations :;[]{}()<>!?, coming after a character
-        modComm = re.sub(r"(\w)([:;<>,?!\"\[\]\{\}\(\)]){1}", r"\1 \2 ", modComm)
+        modComm = re.sub(r"(\w)([:;<>?!\"\[\]\{\}\(\)]){1}", r"\1 \2 ", modComm)
 
         # Tokenize other punctuations :;<>,?!"[]{}() coming before a character
-        modComm = re.sub(r"([:;<>,?!\"\[\]\{\}\(\)]){1}(\w)", r" \1 \2", modComm)
+        modComm = re.sub(r"([:;<>?!\"\[\]\{\}\(\)]){1}(\w)", r" \1 \2", modComm)
+
+        # Tokenize comma coming before a character (comma handled separately to prevent from splitting numbers, eg: 10,000)
+        modeComm = re.sub(r",(a-ZA-Z_)", r", \1", modComm) 
+
+        # Tokenize comma coming after a character
+        modeComm = re.sub(r"(a-ZA-Z_),", r"\1 ,", modComm) 
 
         # Tokenize period ignoring abbreviations
-        modComm = re.sub(r"(\w[\w\.]*\w)[\.] ", detect_abbrev, modComm)
+        modComm = re.sub(r"(\w[\w\.]*\w)[\.]( |$)", detect_abbrev, modComm)
 
     if 5 in steps:
-        modComm = re.sub(r"(\w)(n't|'s|'ve|'m|'re|'ll)", r"\1 \2 ", modComm)
-        modComm = re.sub(r"s' ", r"s ' ", modComm)
+        modComm = modComm.strip()
+        modComm = re.sub(r"(\w)(n't|'d|'ve|'m|'re|'ll|'n)", r"\1 \2 ", modComm)
+        modComm = re.sub(r"s'( |$)", r"s '\1", modComm)
     if 6 in steps:
-        modComm = re.sub(r"\s+", r" ", modComm)
-        modComm = tokenize(modComm)
+        modComm = modComm.strip()
+        modComm = re.sub(r"\s+", SPACE, modComm)
+        modComm = tagger(modComm)
     if 7 in steps:
-        # Case sensitive in searching for stopwords
-        modComm = re.sub(r"(\w+)/(\w+)", detect_stopwords, modComm)
+        modComm = modComm.strip()
+
+        # Case insensitive in searching for stopwords
+        modComm = re.sub(r"(\S+)\/(\S+)", detect_stopwords, modComm)
     if 8 in steps:
-        modComm = re.sub(r"\s+", r" ", modComm)
+        modComm = modComm.strip()
+        modComm = re.sub(r"\s+", SPACE, modComm)
         modComm = lemmatize(modComm, 6 in steps)
     if 9 in steps:
-        modComm = re.sub(r"\s+", r" ", modComm)
+        modComm = modComm.strip()
+        modComm = re.sub(r"\s+", SPACE, modComm)
         modComm = detect_eos(modComm, 6 in steps or 8 in steps)
-        # modComm = re.sub(r" (\.|!|?|;|:|\") ", r" \1 \n ", modComm)
-        print("TODO")
     if 10 in steps:
-        modComm = re.sub(r"(\S+)/(\S+)", lambda pattern: pattern.group(1).lower() + "/" + pattern.group(2), modComm)
-        
-        
+        modComm = modComm.strip()
+        modComm = re.sub(r"(\S+)\/(\S+)", lambda pattern: pattern.group(1).lower() + "/" + pattern.group(2), modComm)
+
     return modComm
 
 def preproc(data, category):
     for i in range(len(data)):
         json_line = json.loads(data[i])
         preproc_body = preproc1(json_line['body'])
+        print("####################Original String####################")
+        print (json_line['body'])
+        print("####################Parsed String####################")
+        print(preproc_body.encode('unicode_escape').decode('utf-8'))
     
         json_line['body'] = preproc_body
         json_line['cat'] = category
 
         data[i] = json.JSONEncoder().encode(json_line)
-    
     return data
 
 def main( args ):
