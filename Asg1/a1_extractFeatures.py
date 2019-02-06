@@ -35,6 +35,8 @@ eos_regex = re.compile(r"\n( |$)")
 word_regex = re.compile(r"\S\/\S")
 word_with_atleast_one_character = re.compile(r"[^\s\w]*\w\S*\/")
 
+
+
 def extract1( comment ):
     ''' This function extracts features from a single comment
 
@@ -60,7 +62,7 @@ def extract1( comment ):
     feats[11] = len(wh_words_regex.findall(comment))
     feats[12] = count_slangs(comment)
     feats[13] = len(uppercase_words_regex.findall(comment))
-    feats[16] = len(eos_regex.findall(comment))
+    feats[16] = len(eos_regex.findall(comment)) + 1 # Additional one for the last sentence
     feats[14] = 0 if (feats[16] == 0) else len(word_regex.findall(comment))/feats[16]  
     
     temp_count = 0
@@ -174,7 +176,6 @@ def main( args ):
     # TODO: your code here
     for i in range(len(data)):
         feats[i] = extract(data[i])
-        import pdb; pdb.set_trace()
 
     np.savez_compressed( args.output, feats)
 
