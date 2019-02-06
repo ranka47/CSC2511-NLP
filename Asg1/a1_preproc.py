@@ -33,19 +33,36 @@ def detect_stopwords(pattern):
         return pattern.group(0)
 
 def detect_eos(line, is_tokenized):
+    """
+    No EOS assigned at the end of `line`
+    """
+    tagged_line = ""
+
     if (is_tokenized):
-        line = re.sub(r"(\S+)\/(\S+)", r"\1", line)
+        word_line = re.sub(r"(\S+)\/(\S+)", r"\1", line)
+        tags_list = re.sub(r"(\S+)\/(\S+)", r"\2", line).split(SPACE)
     
+    if (len(word_line.split(" ")) != len(tags_list)):
+        print("Error. Size not matching!!!!")
+        import pdb; pdb.set_trace()
+
     # Newline after EOS punctuations
-    line = re.sub(r"(\w) ([\.!\?;:\"]+) (\w)", r"\1 \2 \n\3", line)
+    word_line = re.sub(r"(\w) ([\.!\?;:\"]+) (\w)", r"\1 \2 \n \3", word_line)
 
     # Move EOS if punctuations followed by double quotations
-    line = re.sub(r" (\.|!|\?) \" ", r" \1 \" \n", line)
+    word_line = re.sub(r" (\.|!|\?) \" ", r" \1 \" \n ", word_line)
 
     # Disqualify boundary with ? or ! if followed by a lowercase letter
-    line = re.sub(r"(\?|!|\.) \n([a-z])", r"\1 \2", line)
+    word_line = re.sub(r"(\?|!|\.) \n([a-z])", r"\1 \2", word_line)
 
-    return line
+    index = 0
+    for word in word_line.split(SPACE):
+        if (word == "\n"):
+            tagged_line = tagged_line + "\n/\n "
+        else:
+            tagged_line = tagged_line + word + "/" + tags_list[index] + SPACE
+            index = index + 1
+    return tagged_line.strip()
  
 def tagger(line):
     if ('/' in line):
@@ -89,15 +106,15 @@ def preproc1(comment , steps=range(1,11)):
         return EMPTY_STRING
 
     modComm = comment
-    if 1 in steps:
+    if 1 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = re.sub(NEWLINE_REGEX, SPACE, modComm)
-    if 2 in steps:
+    if 2 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = html.unescape(modComm)
-    if 3 in steps:
+    if 3 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(URL_REGEX, EMPTY_STRING, modComm)
-    if 4 in steps:
+    if 4 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         # Replace ." ?" !" as . " ? " ! "
         modComm = re.sub(r"(\w)(!|\.|\?)[\s]*(\")", r"\1 \2 \3", modComm)
@@ -115,47 +132,49 @@ def preproc1(comment , steps=range(1,11)):
         modComm = re.sub(r"([:;<>?!\"\[\]\{\}\(\)]){1}(\w)", r" \1 \2", modComm)
 
         # Tokenize comma coming before a character (comma handled separately to prevent from splitting numbers, eg: 10,000)
-        modeComm = re.sub(r",(a-ZA-Z_)", r", \1", modComm) 
+        modComm = re.sub(r",([a-zA-Z_])", r", \1", modComm) 
 
         # Tokenize comma coming after a character
-        modeComm = re.sub(r"(a-ZA-Z_),", r"\1 ,", modComm) 
+        modComm = re.sub(r"([a-zA-Z_]),", r"\1 ,", modComm) 
 
         # Tokenize period ignoring abbreviations
         modComm = re.sub(r"(\w[\w\.]*\w)[\.]( |$)", detect_abbrev, modComm)
 
-    if 5 in steps:
+    if 5 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(r"(\w)(n't|'d|'ve|'m|'re|'ll|'n)", r"\1 \2 ", modComm)
         modComm = re.sub(r"s'( |$)", r"s '\1", modComm)
-    if 6 in steps:
+    if 6 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(r"\s+", SPACE, modComm)
         modComm = tagger(modComm)
-    if 7 in steps:
+    if 7 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
 
         # Case insensitive in searching for stopwords
         modComm = re.sub(r"(\S+)\/(\S+)", detect_stopwords, modComm)
-    if 8 in steps:
+    if 8 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(r"\s+", SPACE, modComm)
         modComm = lemmatize(modComm, 6 in steps)
-    if 9 in steps:
+    if 9 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(r"\s+", SPACE, modComm)
         modComm = detect_eos(modComm, 6 in steps or 8 in steps)
-    if 10 in steps:
+    if 10 in steps and not re.fullmatch(r"\s*", modComm):
         modComm = modComm.strip()
         modComm = re.sub(r"(\S+)\/(\S+)", lambda pattern: pattern.group(1).lower() + "/" + pattern.group(2), modComm)
-
     return modComm
 
 def preproc(data, category):
     for i in range(len(data)):
         json_line = json.loads(data[i])
-        preproc_body = preproc1(json_line['body'])
+
         print("####################Original String####################")
         print (json_line['body'])
+
+        preproc_body = preproc1(json_line['body'])
+
         print("####################Parsed String####################")
         print(preproc_body.encode('unicode_escape').decode('utf-8'))
     
