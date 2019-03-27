@@ -71,7 +71,7 @@ def calc_score(e_sentence, LM):
     for i in range(1, len(e_sentence)):
         word_i = e_sentence[i][0]
         word_i_1 = e_sentence[i-1][0]
-        if word_i in LM['uni'] and word_i in LM['bi'][word_i_1]:
+        if word_i in LM['uni'] and word_i in LM['bi'][word_i_1] and (e_sentence[i][1] != 0):
             score += log(e_sentence[i][1], 2) + log(LM['bi'][word_i_1][word_i], 2) + log(LM['uni'][word_i], 2)
         else:
             return float("-inf")
