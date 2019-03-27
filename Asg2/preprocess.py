@@ -19,16 +19,18 @@ def preprocess(in_sentence, language):
     SPACE = " "
 
     # Separates EOS punctuations, commas, semicolons, colons, mathematical operators, quotation marks, dashes, parentheses
-    in_sentence = re.sub(r"(!|\?|\.|,|:|;|\(|\)|\+|-|<|>|=|\")", r" \1 ", in_sentence)
+    # \w captures alphanumeric and underscore. \s ignores whitespaces. Single quotation is added to ignore clitics
+    in_sentence = re.sub(r"([^\w\'\s])", r" \1 ", in_sentence)
     
     # Converts tokens to lowercase
     in_sentence = re.sub(r"(\S+)", lambda pattern: pattern.group(1).lower(), in_sentence)
 
     if language == 'f':
         in_sentence = re.sub(r"( |^)(l|qu)\'(\w)", r"\1\2' \3", in_sentence)
-        in_sentence = re.sub(r"(\w)\'(on|il)( |$)", r"\1 '\2\3", in_sentence)
-        in_sentence = re.sub(r"( |^)(b|c|f|g|h|j|k|l|m|n|p|q|r|s|t|v|w|x|y|z)\'(\w+)", r"\1\2' \3", in_sentence)
+        in_sentence = re.sub(r"(\w)\'(on|il)( |$)", r"\1' \2\3", in_sentence)
+        in_sentence = re.sub(r"( |^)(b|c|f|g|h|j|k|l|m|n|p|q|r|s|t|v|w|x|z)\'(\w+)", r"\1\2' \3", in_sentence)
         in_sentence = re.sub(r"( |^)d\'(?!(abord|accord|ailleurs|habitude)( |$))(\w+)", r"\1d' \4", in_sentence)
 
+    in_sentence = re.sub(r"\s+", SPACE, in_sentence)
     out_sentence = out_sentence + in_sentence.strip() + " SENTEND"
     return out_sentence
